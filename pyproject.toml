@@ -18,6 +18,12 @@ dependencies = [
     "tenacity>=8.3.0",
     "httpx>=0.27.0",              # async HTTP client / test transport
     "pyyaml>=6.0",                # frontmatter parsing in RAG ingest
+    # OpenTelemetry — spans across pipeline.run, agent run, tool calls.
+    # No-op when ``OTEL_ENABLED=false`` (default), so this is cheap.
+    "opentelemetry-api>=1.25.0",
+    "opentelemetry-sdk>=1.25.0",
+    "opentelemetry-instrumentation-fastapi>=0.46b0",
+    "opentelemetry-exporter-otlp-proto-http>=1.25.0",
 ]
 
 [project.optional-dependencies]
@@ -27,6 +33,13 @@ dev = [
     "httpx>=0.27.0",
     "ruff>=0.5.0",
     "mypy>=1.10.0",
+]
+# E-pgvector — Postgres + pgvector vector-store backend. Pull these in only
+# when you actually want to swap Chroma for pgvector
+# (``pip install -e ".[pgvector]"``).
+pgvector = [
+    "asyncpg>=0.29.0",
+    "pgvector>=0.3.0",
 ]
 
 [build-system]

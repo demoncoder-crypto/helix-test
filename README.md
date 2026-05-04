@@ -8,6 +8,13 @@ Helix docs) or an `AccountAgent` (mock CI/account tools). Session state
 is persisted to SQLite so that follow-up turns survive a `uvicorn`
 restart.
 
+> **Extensions implemented:** E1 (idempotency), E4 (LLM-as-judge
+> reranker), E5 (guardrails + PII redaction), E6 (Docker), E7 (30-row
+> eval harness with recall@k), plus OpenTelemetry tracing and a
+> Postgres+pgvector vector-store swap-in. See
+> [Extensions completed](#extensions-completed) for details and the
+> A/B reranker-lift demo.
+
 ---
 
 ## Setup (≤ 5 minutes from clean clone)
@@ -250,6 +257,14 @@ visible in the audit log.
   trace_id)`; the pipeline runs exactly once. Enforced both by an
   upfront cache lookup and a `UNIQUE (session_id, idempotency_key)`
   index on `messages` (race-condition fallback via `IntegrityError`).
+- [x] **E4 — LLM-as-judge reranker** (5 pts). When `RERANKER_ENABLED=true`,
+  `search_docs` over-fetches top-20 chunks from Chroma, then a single
+  Gemini call scores each candidate's relevance to the query in a
+  JSON-mode response, and we take the top-5 by judge score. The
+  reranker is purely additive — any failure (no key, parse error,
+  rate-limit, timeout) falls back to first-stage order so retrieval
+  never breaks. Lift is measurable on the E7 golden set (see below).
+  Code: `app/rag/reranker.py`. Wiring: `app/agents/tools/search_docs.py`.
 - [x] **E5 — Guardrails** (4 pts). `app/agents/guardrails.py` refuses
   out-of-scope requests (poems, jokes, role-play, unrelated coding
   asks) before invoking the LLM and tags those turns
@@ -261,10 +276,68 @@ visible in the audit log.
   named volume (`srop-data`) holds both SQLite and Chroma so
   conversation state survives `docker compose down/up` — the same
   restart-survival demo works at the container level.
+- [x] **E7 — Eval harness** (5 pts). `eval/golden.jsonl` contains 30
+  hand-curated rows (`{id, query, expected_route, expected_source_substr}`)
+  spanning the three routes (15 knowledge / 10 account / 5 refusal).
+  `python eval/run_eval.py --tag <name>` hits a running server,
+  computes routing accuracy (overall + per-route), retrieval
+  hit-rate, and **recall@1 / @3 / @5** on the knowledge subset by
+  resolving each retrieved `chunk_id` to its source-doc filename via
+  Chroma. The script can dump the full per-row report to JSON
+  (`--out`) so you can diff baseline-vs-reranked runs.
+- [x] **OpenTelemetry tracing** (extension). When `OTEL_ENABLED=true`,
+  every turn emits a tree of spans:
+  `pipeline.run` → `adk.run` → `rag.search_docs` →
+  `{rag.embed_query, rag.vector_query, rag.rerank}`.
+  Each span carries useful attributes (`session_id`, `trace_id`,
+  `routed_to`, `latency_ms`, `rag.fetch_k`, etc.). Off by default
+  (NoOpTracer is installed instead) so the SDK adds zero perf cost
+  when disabled. Console exporter for local demos
+  (`OTEL_CONSOLE_EXPORTER=true`); OTLP exporter for Jaeger / Tempo
+  (`OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4318`). FastAPI
+  itself is auto-instrumented so the HTTP request span becomes the
+  parent of the pipeline span. Code: `app/obs/tracing.py`.
+- [x] **Postgres + pgvector swap-in** (extension). The vector store is
+  a small dispatcher (`app/rag/vector_store.py`) that routes to either
+  `chroma_store` (default) or `pgvector_store` based on
+  `VECTOR_STORE_BACKEND`. Both backends implement the same async
+  `upsert / query / count` API, so `search_docs.py`, the ingest CLI,
+  and the eval harness work unchanged on either. The pgvector backend
+  lazy-creates the `vector` extension and an HNSW cosine index on
+  first use. Spin up with `docker compose -f docker-compose.pg.yml up -d`,
+  then `pip install -e ".[pgvector]"` and re-run ingest with
+  `VECTOR_STORE_BACKEND=pgvector`. Session/Message/AgentTrace storage
+  is already on SQLAlchemy 2.x async with a Postgres-compatible
+  schema, so pointing `DATABASE_URL` at Postgres works the same way.
 
-Skipped (with reason): E2 escalation agent / E3 SSE streaming / E4
-LLM-as-judge reranker / E7 eval harness — not enough marginal points
-for the time cost given the core was already complete.
+### How to demonstrate the E4 reranker lift
+
+```bash
+# Baseline — vector recall only
+RERANKER_ENABLED=false uvicorn app.main:app --port 8765 &
+python eval/run_eval.py --tag baseline --out eval/results/baseline.json
+kill %1
+
+# Reranked — top-20 fetched, judge picks top-5
+RERANKER_ENABLED=true  uvicorn app.main:app --port 8765 &
+python eval/run_eval.py --tag reranked --out eval/results/reranked.json
+kill %1
+
+# Compare
+python -c "import json,glob; \
+  for p in sorted(glob.glob('eval/results/*.json')): \
+    d=json.load(open(p)); \
+    print(f\"{d['tag']:>10s}: hit-rate={d['knowledge_hit_rate']:.2f}  \" + \
+          ' '.join(f'{k}={v:.2f}' for k,v in d['recall_at_k'].items()))"
+```
+
+Numbers will vary with API quota and which Gemini revision is live,
+but the harness is the durable artifact: any reranker change can be
+A/B'd against this 30-row golden file in one command.
+
+Skipped (with reason): E2 escalation agent / E3 SSE streaming —
+out-of-scope-refusal already covers most of E2's value, and the
+front-end this would be consumed by isn't part of the deliverable.
 
 ---
 
@@ -294,16 +367,25 @@ for the time cost given the core was already complete.
 
 ## What I'd do with more time
 
-1. **E4 LLM-as-judge reranker** on top-20 → top-5 — measurable
-   recall-at-3 lift on 5 fixed queries, reported in README.
-2. **E7 eval harness** — a 30-row golden file
-   (`{query, expected_route, expected_chunk_id_substr}`) and a
-   `python eval/run_eval.py` script that hits the live server and
-   prints routing accuracy + retrieval hit-rate.
-3. **OpenTelemetry** spans across pipeline.run / agent run / tool call
-   so latency breakdowns are visible in Jaeger.
-4. **Postgres + pgvector** swap-in — `DATABASE_URL` is already set up
-   for `postgresql+asyncpg`; only the Chroma layer is SQLite-coupled.
+1. **E2 escalation agent.** A third sub-agent that owns "talk to a
+   human" flows: opens a `support_ticket` row in the DB, picks a
+   priority, and emits a webhook event. The plumbing is already
+   here — would just be one more `LlmAgent` + tool + DB table.
+2. **E3 SSE streaming.** `text/event-stream` on `/v1/chat/{id}` so the
+   UI can render tokens as they arrive. ADK's runner already exposes
+   `run_async` as an async generator; the FastAPI side is one
+   `EventSourceResponse` away.
+3. **Cross-encoder reranker** as a second option alongside the
+   LLM-as-judge one. Local model (e.g. `bge-reranker-base`) avoids the
+   second LLM round-trip and gets ~80% of the lift; the dispatcher
+   pattern from the vector store would translate cleanly.
+4. **Reranker eval lift in CI.** Wire `eval/run_eval.py` into a
+   GitHub Action that runs both modes on every PR and posts the
+   recall@3 delta as a comment. Right now it's a manual
+   "stop-server, flip env, restart, rerun" loop.
+5. **Auth / multi-tenancy.** `SECRET_KEY` is wired but the JWT layer
+   from E2 of the spec isn't built; would also let
+   `get_recent_builds` / `get_account_status` actually scope by org.
 
 ---
 
@@ -321,5 +403,6 @@ for the time cost given the core was already complete.
 | Trace endpoint                                     | 0:10 |
 | Tests (15 across `test_api`, `test_retriever`, `test_guardrails`) | 0:35 |
 | Extensions: E1 idempotency, E5 guardrails, E6 Docker | 0:45 |
-| README + manual demo verification                  | 0:25 |
-| **Total**                                          | **~6:00** |
+| Extensions: E4 reranker, E7 eval harness, OTel, pgvector | 1:30 |
+| README + manual demo verification                  | 0:30 |
+| **Total**                                          | **~7:30** |

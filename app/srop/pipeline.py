@@ -41,6 +41,7 @@ from app.api.errors import (
 )
 from app.db.models import AgentTrace, Message
 from app.db.models import Session as SessionModel
+from app.obs.tracing import get_tracer
 from app.settings import settings
 from app.srop.state import SessionState
 
@@ -311,21 +312,29 @@ async def _run_adk_turn(state: SessionState, user_message: str, accum: _TurnTrac
     from google.adk.runners import InMemoryRunner
     from google.genai import types as genai_types
 
-    agent = build_root_agent(state)
-    runner = InMemoryRunner(agent=agent, app_name=_APP_NAME)
+    tracer = get_tracer()
+    with tracer.start_as_current_span("adk.run") as span:
+        span.set_attribute("adk.app_name", _APP_NAME)
+        span.set_attribute("adk.user_id", state.user_id)
+        span.set_attribute("adk.message_len", len(user_message))
 
-    adk_session = await runner.session_service.create_session(
-        app_name=_APP_NAME, user_id=state.user_id
-    )
-    new_message = genai_types.Content(
-        role="user", parts=[genai_types.Part.from_text(text=user_message)]
-    )
-    stream = runner.run_async(
-        user_id=state.user_id,
-        session_id=adk_session.id,
-        new_message=new_message,
-    )
-    await _consume_events(stream, accum)
+        agent = build_root_agent(state)
+        runner = InMemoryRunner(agent=agent, app_name=_APP_NAME)
+
+        adk_session = await runner.session_service.create_session(
+            app_name=_APP_NAME, user_id=state.user_id
+        )
+        new_message = genai_types.Content(
+            role="user", parts=[genai_types.Part.from_text(text=user_message)]
+        )
+        stream = runner.run_async(
+            user_id=state.user_id,
+            session_id=adk_session.id,
+            new_message=new_message,
+        )
+        await _consume_events(stream, accum)
+        span.set_attribute("adk.tool_calls", len(accum.tool_calls))
+        span.set_attribute("adk.routed_to", accum.routed_to)
 
 
 async def run(
@@ -340,87 +349,101 @@ async def run(
     structlog.contextvars.bind_contextvars(session_id=session_id, trace_id=trace_id)
     log.info("pipeline_started", message_len=len(user_message))
 
-    session_row = await _load_session(session_id, db)
-    state = SessionState.from_db_dict(session_row.state or {})
+    tracer = get_tracer()
+    with tracer.start_as_current_span("pipeline.run") as span:
+        span.set_attribute("session_id", session_id)
+        span.set_attribute("trace_id", trace_id)
+        span.set_attribute("idempotency_key", idempotency_key or "")
 
-    accum = _TurnTrace()
-    start = time.perf_counter()
+        session_row = await _load_session(session_id, db)
+        state = SessionState.from_db_dict(session_row.state or {})
+        span.set_attribute("user_id", state.user_id)
+        span.set_attribute("plan_tier", state.plan_tier)
 
-    if is_out_of_scope(user_message):
-        log.info("guardrail_refused")
-        accum.final_text = refusal_message(user_message)
-        accum.routed_to = "refusal"
-    else:
-        try:
-            await asyncio.wait_for(
-                _run_adk_turn(state, user_message, accum),
-                timeout=settings.llm_timeout_seconds,
-            )
-        except TimeoutError as exc:
-            log.warning("llm_timeout", timeout_s=settings.llm_timeout_seconds)
-            raise UpstreamTimeoutError(
-                f"LLM did not respond within {settings.llm_timeout_seconds}s"
-            ) from exc
-        except HelixError:
-            raise
-        except Exception as exc:  # noqa: BLE001 - re-classified into a HelixError below
-            err_name = type(exc).__name__
-            err_text = str(exc)
-            if "ResourceExhausted" in err_name or "429" in err_text:
-                log.warning("llm_rate_limited", error=err_text[:200])
-                raise RateLimitedError(
-                    "LLM provider rate limit exceeded; please retry shortly"
+        accum = _TurnTrace()
+        start = time.perf_counter()
+
+        if is_out_of_scope(user_message):
+            log.info("guardrail_refused")
+            accum.final_text = refusal_message(user_message)
+            accum.routed_to = "refusal"
+        else:
+            try:
+                await asyncio.wait_for(
+                    _run_adk_turn(state, user_message, accum),
+                    timeout=settings.llm_timeout_seconds,
+                )
+            except TimeoutError as exc:
+                log.warning("llm_timeout", timeout_s=settings.llm_timeout_seconds)
+                raise UpstreamTimeoutError(
+                    f"LLM did not respond within {settings.llm_timeout_seconds}s"
                 ) from exc
-            log.error("llm_call_failed", error_type=err_name, error=err_text[:200])
-            raise UpstreamTimeoutError(f"LLM call failed: {err_name}") from exc
+            except HelixError:
+                raise
+            except Exception as exc:  # noqa: BLE001 - re-classified into a HelixError below
+                err_name = type(exc).__name__
+                err_text = str(exc)
+                if "ResourceExhausted" in err_name or "429" in err_text:
+                    log.warning("llm_rate_limited", error=err_text[:200])
+                    raise RateLimitedError(
+                        "LLM provider rate limit exceeded; please retry shortly"
+                    ) from exc
+                log.error("llm_call_failed", error_type=err_name, error=err_text[:200])
+                raise UpstreamTimeoutError(f"LLM call failed: {err_name}") from exc
 
-    latency_ms = int((time.perf_counter() - start) * 1000)
+        latency_ms = int((time.perf_counter() - start) * 1000)
 
-    # AgentTool routing fix: when the root agent delegates via AgentTool,
-    # the final event author is the root agent, not the specialist. The
-    # authoritative signal is *which* AgentTool was called.
-    if accum.routed_to in ("smalltalk",):
-        from_tools = _route_from_tool_calls(accum.tool_calls)
-        if from_tools:
-            accum.routed_to = from_tools
+        # AgentTool routing fix: when the root agent delegates via
+        # AgentTool, the final event author is the root agent, not the
+        # specialist. The authoritative signal is *which* AgentTool was
+        # called.
+        if accum.routed_to in ("smalltalk",):
+            from_tools = _route_from_tool_calls(accum.tool_calls)
+            if from_tools:
+                accum.routed_to = from_tools
 
-    # Final fallback: pull chunk IDs from the assistant text itself if
-    # neither the inner nor outer tool result surfaced them. This covers
-    # cases where the LLM cites IDs in its own paraphrase but the AgentTool
-    # response was already trimmed.
-    if not accum.retrieved_chunk_ids and accum.final_text:
-        for cid in _extract_chunk_ids(accum.final_text):
-            if cid not in accum.retrieved_chunk_ids:
-                accum.retrieved_chunk_ids.append(cid)
+        # Final fallback: pull chunk IDs from the assistant text itself
+        # if neither the inner nor outer tool result surfaced them.
+        if not accum.retrieved_chunk_ids and accum.final_text:
+            for cid in _extract_chunk_ids(accum.final_text):
+                if cid not in accum.retrieved_chunk_ids:
+                    accum.retrieved_chunk_ids.append(cid)
 
-    if not accum.final_text:
-        accum.final_text = (
-            "I wasn't able to produce a response. Please try rephrasing."
+        if not accum.final_text:
+            accum.final_text = (
+                "I wasn't able to produce a response. Please try rephrasing."
+            )
+
+        await _persist_turn(
+            db=db,
+            session_row=session_row,
+            state=state,
+            user_message=user_message,
+            assistant_text=accum.final_text,
+            trace=accum,
+            trace_id=trace_id,
+            latency_ms=latency_ms,
+            idempotency_key=idempotency_key,
         )
 
-    await _persist_turn(
-        db=db,
-        session_row=session_row,
-        state=state,
-        user_message=user_message,
-        assistant_text=accum.final_text,
-        trace=accum,
-        trace_id=trace_id,
-        latency_ms=latency_ms,
-        idempotency_key=idempotency_key,
-    )
+        span.set_attribute("routed_to", accum.routed_to)
+        span.set_attribute("latency_ms", latency_ms)
+        span.set_attribute("tool_calls", len(accum.tool_calls))
+        span.set_attribute("retrieved_chunks", len(accum.retrieved_chunk_ids))
 
-    log.info(
-        "pipeline_completed",
-        routed_to=accum.routed_to,
-        latency_ms=latency_ms,
-        tool_calls=len(accum.tool_calls),
-        chunks=len(accum.retrieved_chunk_ids),
-    )
+        log.info(
+            "pipeline_completed",
+            routed_to=accum.routed_to,
+            latency_ms=latency_ms,
+            tool_calls=len(accum.tool_calls),
+            chunks=len(accum.retrieved_chunk_ids),
+        )
 
-    return PipelineResult(
-        content=accum.final_text, routed_to=accum.routed_to, trace_id=trace_id
-    )
+        return PipelineResult(
+            content=accum.final_text,
+            routed_to=accum.routed_to,
+            trace_id=trace_id,
+        )
 
 
 __all__ = ["PipelineResult", "run"]

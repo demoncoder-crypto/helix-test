@@ -16,11 +16,13 @@ from app.api import routes_chat, routes_sessions, routes_traces
 from app.api.errors import HelixError, helix_error_handler
 from app.db.session import init_db
 from app.obs.logging import configure_logging
+from app.obs.tracing import configure_tracing
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     configure_logging()
+    configure_tracing(app)
     await init_db()
     yield
 

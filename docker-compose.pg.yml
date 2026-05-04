@@ -1,0 +1,31 @@
+# Optional Postgres + pgvector overlay for the swap-in vector backend.
+#
+#   docker compose -f docker-compose.pg.yml up -d
+#   PGVECTOR_DATABASE_URL=postgresql://helix:helix@localhost:5432/helix_srop \
+#   VECTOR_STORE_BACKEND=pgvector \
+#   python -m app.rag.ingest
+#
+# pgvector/pgvector:pg16 ships Postgres 16 with the ``vector`` extension
+# preinstalled; we just CREATE EXTENSION on first use from
+# ``app/rag/pgvector_store.py``.
+services:
+  pgvector:
+    image: pgvector/pgvector:pg16
+    container_name: helix-pgvector
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: helix
+      POSTGRES_PASSWORD: helix
+      POSTGRES_DB: helix_srop
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgvector_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U helix -d helix_srop"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  pgvector_data:

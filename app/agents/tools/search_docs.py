@@ -12,8 +12,10 @@ import asyncio
 from dataclasses import dataclass, field
 from typing import Any
 
+from app.obs.tracing import get_tracer
 from app.rag.embeddings import embed_query
 from app.rag.vector_store import query as vs_query
+from app.settings import settings
 
 
 @dataclass
@@ -50,36 +52,69 @@ async def search_docs(
     """
     if not query or not query.strip():
         return []
-    query_vec = await asyncio.to_thread(embed_query, query, "auto")
+    tracer = get_tracer()
+    with tracer.start_as_current_span("rag.search_docs") as span:
+        span.set_attribute("rag.query_len", len(query))
+        span.set_attribute("rag.k", k)
+        if product_area:
+            span.set_attribute("rag.product_area", product_area)
 
-    where: dict[str, Any] | None = None
-    if product_area:
-        where = {"product_area": product_area}
+        with tracer.start_as_current_span("rag.embed_query"):
+            query_vec = await asyncio.to_thread(embed_query, query, "auto")
 
-    raw = await vs_query(query_vec, k=k, where=where)
+        where: dict[str, Any] | None = None
+        if product_area:
+            where = {"product_area": product_area}
 
-    ids_batch = raw.get("ids") or [[]]
-    distances_batch = raw.get("distances") or [[]]
-    documents_batch = raw.get("documents") or [[]]
-    metadatas_batch = raw.get("metadatas") or [[]]
-
-    ids = ids_batch[0] if ids_batch else []
-    distances = distances_batch[0] if distances_batch else []
-    documents = documents_batch[0] if documents_batch else []
-    metadatas = metadatas_batch[0] if metadatas_batch else []
-
-    chunks: list[DocChunk] = []
-    for chunk_id, distance, doc, meta in zip(ids, distances, documents, metadatas):
-        chunks.append(
-            DocChunk(
-                chunk_id=chunk_id,
-                score=_distance_to_score(distance),
-                content=doc or "",
-                metadata=dict(meta or {}),
-            )
+        # E4: when the reranker is enabled we over-fetch from the vector
+        # store, then ask an LLM judge to rerank to top-k.
+        fetch_k = k
+        apply_rerank = settings.reranker_enabled and bool(
+            settings.google_api_key.strip()
         )
-    chunks.sort(key=lambda c: c.score, reverse=True)
-    return chunks
+        if apply_rerank:
+            fetch_k = max(k, min(settings.reranker_top_n, k * 8))
+        span.set_attribute("rag.fetch_k", fetch_k)
+        span.set_attribute("rag.reranker_enabled", apply_rerank)
+
+        with tracer.start_as_current_span("rag.vector_query") as vq_span:
+            raw = await vs_query(query_vec, k=fetch_k, where=where)
+            vq_span.set_attribute("rag.vector_query.k", fetch_k)
+
+        ids_batch = raw.get("ids") or [[]]
+        distances_batch = raw.get("distances") or [[]]
+        documents_batch = raw.get("documents") or [[]]
+        metadatas_batch = raw.get("metadatas") or [[]]
+
+        ids = ids_batch[0] if ids_batch else []
+        distances = distances_batch[0] if distances_batch else []
+        documents = documents_batch[0] if documents_batch else []
+        metadatas = metadatas_batch[0] if metadatas_batch else []
+
+        chunks: list[DocChunk] = []
+        for chunk_id, distance, doc, meta in zip(ids, distances, documents, metadatas):
+            chunks.append(
+                DocChunk(
+                    chunk_id=chunk_id,
+                    score=_distance_to_score(distance),
+                    content=doc or "",
+                    metadata=dict(meta or {}),
+                )
+            )
+        chunks.sort(key=lambda c: c.score, reverse=True)
+        span.set_attribute("rag.first_stage_count", len(chunks))
+
+        if apply_rerank and len(chunks) > k:
+            from app.rag.reranker import rerank_chunks
+
+            with tracer.start_as_current_span("rag.rerank") as rs_span:
+                rs_span.set_attribute("rag.rerank.candidates", len(chunks))
+                chunks = await rerank_chunks(query, chunks, top_k=k)
+                rs_span.set_attribute("rag.rerank.top_k", len(chunks))
+
+        result = chunks[:k]
+        span.set_attribute("rag.result_count", len(result))
+        return result
 
 
 def format_chunks_for_agent(chunks: list[DocChunk]) -> str:

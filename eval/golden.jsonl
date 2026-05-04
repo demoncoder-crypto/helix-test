@@ -1,0 +1,30 @@
+{"id":"k01","query":"How do I rotate a deploy key?","expected_route":"knowledge","expected_source_substr":"deploy-keys"}
+{"id":"k02","query":"What SSH key type is recommended for deploy keys?","expected_route":"knowledge","expected_source_substr":"deploy-keys"}
+{"id":"k03","query":"How often should I rotate deploy keys?","expected_route":"knowledge","expected_source_substr":"deploy-keys"}
+{"id":"k04","query":"How do I upgrade to the Pro plan?","expected_route":"knowledge","expected_source_substr":"billing-plans"}
+{"id":"k05","query":"What is the build time limit on the free plan?","expected_route":"knowledge","expected_source_substr":"billing-plans"}
+{"id":"k06","query":"How many concurrent builds does Pro give me?","expected_route":"knowledge","expected_source_substr":"billing-plans"}
+{"id":"k07","query":"How do I create a webhook?","expected_route":"knowledge","expected_source_substr":"webhooks"}
+{"id":"k08","query":"Which webhook events can I subscribe to?","expected_route":"knowledge","expected_source_substr":"webhooks"}
+{"id":"k09","query":"How do I authenticate Helix API requests?","expected_route":"knowledge","expected_source_substr":"api-authentication"}
+{"id":"k10","query":"What kinds of runners are available in Helix?","expected_route":"knowledge","expected_source_substr":"runners"}
+{"id":"k11","query":"How does secret scanning work?","expected_route":"knowledge","expected_source_substr":"secret-scanning"}
+{"id":"k12","query":"How do I push to the artifact registry?","expected_route":"knowledge","expected_source_substr":"artifact-registry"}
+{"id":"k13","query":"What goes inside helix-ci.yml?","expected_route":"knowledge","expected_source_substr":"helix-ci-yml"}
+{"id":"k14","query":"How do I open a support ticket?","expected_route":"knowledge","expected_source_substr":"support-tickets"}
+{"id":"k15","query":"What does the observability dashboard show?","expected_route":"knowledge","expected_source_substr":"observability"}
+{"id":"a01","query":"Show me my last 3 builds","expected_route":"account","expected_source_substr":null}
+{"id":"a02","query":"What were my last 5 builds?","expected_route":"account","expected_source_substr":null}
+{"id":"a03","query":"Did my last build pass or fail?","expected_route":"account","expected_source_substr":null}
+{"id":"a04","query":"What is my account status?","expected_route":"account","expected_source_substr":null}
+{"id":"a05","query":"How much storage am I using?","expected_route":"account","expected_source_substr":null}
+{"id":"a06","query":"List my recent build failures","expected_route":"account","expected_source_substr":null}
+{"id":"a07","query":"Show me my build history","expected_route":"account","expected_source_substr":null}
+{"id":"a08","query":"Give me my account summary","expected_route":"account","expected_source_substr":null}
+{"id":"a09","query":"How many builds have I run this month?","expected_route":"account","expected_source_substr":null}
+{"id":"a10","query":"What plan tier am I on?","expected_route":"account","expected_source_substr":null}
+{"id":"r01","query":"Write me a poem about continuous integration","expected_route":"refusal","expected_source_substr":null}
+{"id":"r02","query":"Tell me a joke about programmers","expected_route":"refusal","expected_source_substr":null}
+{"id":"r03","query":"What is the weather like today in San Francisco?","expected_route":"refusal","expected_source_substr":null}
+{"id":"r04","query":"Help me write a Python function to sort a list","expected_route":"refusal","expected_source_substr":null}
+{"id":"r05","query":"What is your favorite color and why?","expected_route":"refusal","expected_source_substr":null}
