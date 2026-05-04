@@ -30,8 +30,7 @@ import math
 import re
 from typing import Literal
 
-from app.api.api_key import active_google_api_key
-from app.settings import settings  # noqa: F401 - kept for future config knobs
+from app.settings import settings
 
 EmbeddingTaskType = Literal["retrieval_document", "retrieval_query"]
 EMBEDDING_DIM = 768
@@ -46,14 +45,20 @@ _TOKEN_RE = re.compile(r"[A-Za-z0-9_]+")
 
 
 def _backend() -> Literal["google", "local"]:
-    """Decide which backend to use based on the active API key.
+    """Decide which backend to use based on the **server's** API key.
 
-    Falls back to ``local`` when no Google API key is configured (server
-    or per-request) so that tests, CI, and offline development still
-    work. ``active_google_api_key()`` returns the request-scoped BYOK
-    key if one is set, otherwise the server's configured key.
+    IMPORTANT: embedding backend is a server-level decision, NOT
+    request-scoped. Both ingest and query must use the same backend
+    or vectors live in different mathematical spaces and cosine
+    similarity becomes meaningless. Per-request BYOK keys
+    (``X-Google-Api-Key``) are only used for the LLM call (ADK +
+    reranker), never for embeddings.
+
+    Falls back to ``local`` when no server-level key is configured so
+    tests, CI, offline dev, and zero-secret hosted demos all still
+    work — they just use a lower-quality but self-consistent embedding.
     """
-    if active_google_api_key().strip():
+    if settings.google_api_key.strip():
         return "google"
     return "local"
 
@@ -94,7 +99,7 @@ def _google_embed_batch(
     from google import genai
     from google.genai import types as genai_types
 
-    client = genai.Client(api_key=active_google_api_key())
+    client = genai.Client(api_key=settings.google_api_key)
     api_task_type = _TASK_TYPE_MAP[task_type]
     out: list[list[float]] = []
     for text in texts:
