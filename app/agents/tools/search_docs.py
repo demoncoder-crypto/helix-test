@@ -12,6 +12,7 @@ import asyncio
 from dataclasses import dataclass, field
 from typing import Any
 
+from app.api.api_key import active_google_api_key
 from app.obs.tracing import get_tracer
 from app.rag.embeddings import embed_query
 from app.rag.vector_store import query as vs_query
@@ -70,7 +71,7 @@ async def search_docs(
         # store, then ask an LLM judge to rerank to top-k.
         fetch_k = k
         apply_rerank = settings.reranker_enabled and bool(
-            settings.google_api_key.strip()
+            active_google_api_key().strip()
         )
         if apply_rerank:
             fetch_k = max(k, min(settings.reranker_top_n, k * 8))

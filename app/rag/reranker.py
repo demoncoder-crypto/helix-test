@@ -36,6 +36,7 @@ from typing import TYPE_CHECKING
 
 import structlog
 
+from app.api.api_key import active_google_api_key
 from app.settings import settings
 
 if TYPE_CHECKING:
@@ -113,7 +114,7 @@ def _call_judge_sync(prompt: str) -> str:
     from google import genai
     from google.genai import types as genai_types
 
-    client = genai.Client(api_key=settings.google_api_key)
+    client = genai.Client(api_key=active_google_api_key())
     resp = client.models.generate_content(
         model=settings.reranker_model,
         contents=prompt,
@@ -138,7 +139,7 @@ async def rerank_chunks(
     """
     if not candidates:
         return []
-    if not settings.google_api_key.strip():
+    if not active_google_api_key().strip():
         log.warning("reranker_skipped_no_api_key")
         return candidates[:top_k]
 

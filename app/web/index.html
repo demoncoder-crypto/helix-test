@@ -82,6 +82,35 @@
         <aside class="space-y-4">
           <section class="rounded-2xl border border-slate-800 bg-slate-900/60 p-4">
             <h2 class="text-sm font-semibold text-slate-200 mb-3 flex items-center justify-between">
+              <span>Google API key</span>
+              <span id="key-indicator" class="text-[10px] uppercase tracking-wider text-slate-500">none</span>
+            </h2>
+            <div class="relative">
+              <input id="api-key" type="password" autocomplete="off" placeholder="AIzaSy…"
+                class="w-full bg-slate-950 border border-slate-700 rounded-lg pl-3 pr-20 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-sky-500/40 focus:border-sky-500/40" />
+              <button type="button" id="api-key-toggle"
+                class="absolute right-1 top-1 text-[10px] text-slate-400 hover:text-slate-200 px-2 py-1 rounded">show</button>
+            </div>
+            <div class="flex items-center gap-2 mt-2">
+              <button id="api-key-save"
+                class="flex-1 text-xs bg-slate-800 hover:bg-slate-700 border border-slate-700 rounded-md py-1.5 transition">
+                Save
+              </button>
+              <button id="api-key-clear"
+                class="text-xs text-slate-400 hover:text-rose-300 px-2 py-1.5 rounded-md transition">
+                clear
+              </button>
+            </div>
+            <p class="text-[10.5px] text-slate-500 mt-2 leading-relaxed">
+              <a class="text-sky-400 hover:text-sky-300" href="https://aistudio.google.com/apikey" target="_blank" rel="noreferrer">Get a free key →</a>
+              · stays in your browser <code class="text-slate-400">localStorage</code>
+              · sent per-request as <code class="text-slate-400">X-Google-Api-Key</code>
+              · never logged or stored server-side.
+            </p>
+          </section>
+
+          <section class="rounded-2xl border border-slate-800 bg-slate-900/60 p-4">
+            <h2 class="text-sm font-semibold text-slate-200 mb-3 flex items-center justify-between">
               Session
               <button id="reset-session" class="text-xs text-sky-400 hover:text-sky-300">reset</button>
             </h2>
@@ -221,6 +250,7 @@
     <script>
     (() => {
       const API = window.location.origin;
+      const STORAGE_KEY = "helix-srop:google-api-key";
       let session = null;
 
       const $  = (id) => document.getElementById(id);
@@ -235,6 +265,59 @@
         return n;
       };
       const fmtTime = (ms) => ms < 1000 ? `${ms} ms` : `${(ms / 1000).toFixed(1)} s`;
+
+      // ───── BYOK: API key persistence ─────
+      function loadApiKey() {
+        try { return localStorage.getItem(STORAGE_KEY) || ""; }
+        catch { return ""; }
+      }
+      function saveApiKey(key) {
+        try { key ? localStorage.setItem(STORAGE_KEY, key) : localStorage.removeItem(STORAGE_KEY); }
+        catch {/* private mode etc. */}
+      }
+      function refreshKeyIndicator() {
+        const key = ($("api-key").value || "").trim();
+        const ind = $("key-indicator");
+        if (!key) {
+          ind.textContent = "server fallback";
+          ind.className = "text-[10px] uppercase tracking-wider text-slate-500";
+        } else if (!/^AIza[\w-]{30,}$/.test(key)) {
+          ind.textContent = "format?";
+          ind.className = "text-[10px] uppercase tracking-wider text-amber-400";
+        } else {
+          ind.textContent = "BYOK active";
+          ind.className = "text-[10px] uppercase tracking-wider text-emerald-400";
+        }
+      }
+      function currentApiKey() {
+        return ($("api-key").value || "").trim();
+      }
+
+      // hydrate from storage on load
+      const stored = loadApiKey();
+      if (stored) $("api-key").value = stored;
+      refreshKeyIndicator();
+
+      $("api-key").addEventListener("input", refreshKeyIndicator);
+      $("api-key-toggle").addEventListener("click", () => {
+        const inp = $("api-key");
+        const showing = inp.type === "text";
+        inp.type = showing ? "password" : "text";
+        $("api-key-toggle").textContent = showing ? "show" : "hide";
+      });
+      $("api-key-save").addEventListener("click", () => {
+        saveApiKey(currentApiKey());
+        const btn = $("api-key-save");
+        const orig = btn.textContent;
+        btn.textContent = "saved ✓";
+        btn.classList.add("text-emerald-400");
+        setTimeout(() => { btn.textContent = orig; btn.classList.remove("text-emerald-400"); }, 1200);
+      });
+      $("api-key-clear").addEventListener("click", () => {
+        $("api-key").value = "";
+        saveApiKey("");
+        refreshKeyIndicator();
+      });
 
       // ───── health ping ─────
       async function ping() {
@@ -364,6 +447,8 @@
         appendTyping();
 
         const headers = { "Content-Type": "application/json" };
+        const userKey = currentApiKey();
+        if (userKey) headers["X-Google-Api-Key"] = userKey;
         if ($("opt-idempotency").checked) {
           // Stable per-message key so a fast double-click replays the cache.
           const key = `ui-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;

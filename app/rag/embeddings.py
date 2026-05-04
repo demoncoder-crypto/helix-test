@@ -30,7 +30,8 @@ import math
 import re
 from typing import Literal
 
-from app.settings import settings
+from app.api.api_key import active_google_api_key
+from app.settings import settings  # noqa: F401 - kept for future config knobs
 
 EmbeddingTaskType = Literal["retrieval_document", "retrieval_query"]
 EMBEDDING_DIM = 768
@@ -45,12 +46,14 @@ _TOKEN_RE = re.compile(r"[A-Za-z0-9_]+")
 
 
 def _backend() -> Literal["google", "local"]:
-    """Decide which backend to use based on settings.
+    """Decide which backend to use based on the active API key.
 
-    Falls back to ``local`` when no Google API key is configured so that
-    tests, CI, and offline development all still work.
+    Falls back to ``local`` when no Google API key is configured (server
+    or per-request) so that tests, CI, and offline development still
+    work. ``active_google_api_key()`` returns the request-scoped BYOK
+    key if one is set, otherwise the server's configured key.
     """
-    if settings.google_api_key and settings.google_api_key.strip():
+    if active_google_api_key().strip():
         return "google"
     return "local"
 
@@ -91,7 +94,7 @@ def _google_embed_batch(
     from google import genai
     from google.genai import types as genai_types
 
-    client = genai.Client(api_key=settings.google_api_key)
+    client = genai.Client(api_key=active_google_api_key())
     api_task_type = _TASK_TYPE_MAP[task_type]
     out: list[list[float]] = []
     for text in texts:
