@@ -1,3 +1,13 @@
+---
+title: Helix SROP
+emoji: 🛰️
+colorFrom: blue
+colorTo: indigo
+sdk: docker
+app_port: 7860
+pinned: false
+---
+
 # Helix SROP — AI Support Concierge
 
 A **Stateful RAG Orchestration Pipeline** built for the Helix AI Engineer
