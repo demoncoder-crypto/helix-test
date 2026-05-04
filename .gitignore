@@ -1,0 +1,41 @@
+.DS_Store
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Virtualenvs
+.venv/
+venv/
+env/
+
+# Environment & secrets
+.env
+.env.local
+*.key
+*.pem
+
+# Local runtime artefacts
+helix_srop.db
+helix_srop.db-journal
+chroma_db/
+*.sqlite
+*.sqlite3
+
+# Logs
+install.log
+*.log
+
+# IDE
+.idea/
+.vscode/
+
+# Demo / Loom temp files
+demo_session_id.txt
+loom_session.txt
+loom_trace.txt

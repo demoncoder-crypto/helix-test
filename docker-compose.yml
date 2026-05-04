@@ -1,0 +1,22 @@
+services:
+  helix-srop:
+    build: .
+    image: helix-srop:latest
+    container_name: helix-srop
+    ports:
+      - "8000:8000"
+    environment:
+      - GOOGLE_API_KEY=${GOOGLE_API_KEY:-}
+      - DATABASE_URL=sqlite+aiosqlite:////data/helix_srop.db
+      - CHROMA_PERSIST_DIR=/data/chroma_db
+      - APP_ENV=production
+      - LOG_LEVEL=INFO
+      - ADK_MODEL=${ADK_MODEL:-gemini-2.0-flash}
+      - LLM_TIMEOUT_SECONDS=${LLM_TIMEOUT_SECONDS:-30}
+    volumes:
+      - srop-data:/data
+      - ./docs:/app/docs:ro
+    restart: unless-stopped
+
+volumes:
+  srop-data:

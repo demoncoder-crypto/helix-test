@@ -1,0 +1,14 @@
+.venv/
+.git/
+__pycache__/
+*.pyc
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+chroma_db/
+helix_srop.db
+helix_srop.db-journal
+*.log
+install.log
+.env
+tests/
