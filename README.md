@@ -10,10 +10,12 @@ restart.
 
 > **Extensions implemented:** E1 (idempotency), E4 (LLM-as-judge
 > reranker), E5 (guardrails + PII redaction), E6 (Docker), E7 (30-row
-> eval harness with recall@k), plus OpenTelemetry tracing and a
-> Postgres+pgvector vector-store swap-in. See
-> [Extensions completed](#extensions-completed) for details and the
-> A/B reranker-lift demo.
+> eval harness with recall@k), plus OpenTelemetry tracing, a
+> Postgres+pgvector vector-store swap-in, and a polished **single-page
+> web UI** served at `/` so reviewers can interact with the system
+> without writing curl. See [Extensions completed](#extensions-completed)
+> for details and the A/B reranker-lift demo, or
+> [Hosted live demo](#hosted-live-demo) for one-click deploy configs.
 
 ---
 
@@ -47,7 +49,33 @@ uvicorn app.main:app --reload
 ```bash
 docker compose up --build
 # Creates a named volume `srop-data` so SQLite + Chroma survive container restarts.
+# Visit http://localhost:8000 → web UI; http://localhost:8000/docs → Swagger.
 ```
+
+### Built-in web UI
+
+The FastAPI app serves a single-page UI at `/` (`app/web/index.html`).
+It's a self-contained HTML page (Tailwind via CDN, no build step) that
+lets reviewers create a session, fire chat turns, see the routing
+badge + latency + trace inspector live, and toggle the
+`Idempotency-Key` header per-message. Same origin as the API, so it
+"just works" against any deployment.
+
+### Hosted live demo
+
+Three one-click options — all use the same `Dockerfile`, so the
+container that runs locally is the same one that ships to the cloud:
+
+| Provider              | What to do                                                         | Free tier |
+|-----------------------|--------------------------------------------------------------------|-----------|
+| **Render**            | New Blueprint → point at this repo. `render.yaml` is committed. Set `GOOGLE_API_KEY` in the dashboard. | yes (cold-starts ~30s) |
+| **Fly.io**            | `fly launch --copy-config && fly secrets set GOOGLE_API_KEY=… && fly deploy` (uses `fly.toml`).        | yes |
+| **Hugging Face Spaces** | New Space → SDK = "Docker". Set `GOOGLE_API_KEY` as a secret. See `Spacefile` for the README frontmatter snippet.            | yes (always-on) |
+
+On first boot the app auto-ingests the bundled `docs/` corpus into
+Chroma if the vector store is empty (see `_auto_ingest_if_empty()` in
+`app/main.py`). With a real `GOOGLE_API_KEY` this takes ~30 s; without
+one it falls back to the local-hash embedding and takes ~5 s.
 
 ### Run the test suite
 

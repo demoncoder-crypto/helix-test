@@ -1,0 +1,32 @@
+# Render.com blueprint — one-click deploy.
+#
+#   1. Fork or push this repo to your GitHub account.
+#   2. https://dashboard.render.com/blueprints → New Blueprint Instance.
+#   3. Point it at the repo. Render reads this file and provisions the service.
+#   4. Set the GOOGLE_API_KEY secret in the Render UI (left blank here so it
+#      is not committed). The first boot auto-ingests the docs corpus.
+#
+# Free instance is fine for the demo; cold starts ~30s.
+services:
+  - type: web
+    name: helix-srop
+    runtime: docker
+    plan: free
+    region: oregon
+    healthCheckPath: /healthz
+    autoDeploy: true
+    envVars:
+      - key: GOOGLE_API_KEY
+        sync: false
+      - key: ADK_MODEL
+        value: gemini-flash-latest
+      - key: LLM_TIMEOUT_SECONDS
+        value: "90"
+      - key: APP_ENV
+        value: production
+      - key: LOG_LEVEL
+        value: INFO
+    disk:
+      name: srop-data
+      mountPath: /app/data
+      sizeGB: 1

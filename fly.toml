@@ -1,0 +1,44 @@
+# Fly.io deploy config.
+#
+#   curl -L https://fly.io/install.sh | sh
+#   fly auth login
+#   fly launch --no-deploy --copy-config
+#   fly secrets set GOOGLE_API_KEY=...
+#   fly deploy
+#
+# The Dockerfile is what actually builds/runs the app — this file just
+# tells Fly which port to expose, where to mount a persistent volume
+# for SQLite + Chroma, and where to point the health-check.
+app = "helix-srop"
+primary_region = "iad"
+
+[build]
+  dockerfile = "Dockerfile"
+
+[env]
+  PORT = "8000"
+  APP_ENV = "production"
+  ADK_MODEL = "gemini-flash-latest"
+  LLM_TIMEOUT_SECONDS = "90"
+
+[http_service]
+  internal_port = 8000
+  force_https = true
+  auto_stop_machines = "stop"
+  auto_start_machines = true
+  min_machines_running = 0
+
+  [[http_service.checks]]
+    interval = "30s"
+    timeout = "5s"
+    grace_period = "30s"
+    method = "get"
+    path = "/healthz"
+
+[[mounts]]
+  source = "srop_data"
+  destination = "/app/data"
+
+[[vm]]
+  size = "shared-cpu-1x"
+  memory = "512mb"

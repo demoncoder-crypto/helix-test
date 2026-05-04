@@ -1,0 +1,28 @@
+# Hugging Face Spaces — Docker SDK.
+#
+# To use:
+#   1. https://huggingface.co/new-space → SDK = "Docker", Hardware = CPU basic.
+#   2. Push this repo (or set Spaces to mirror your GitHub repo).
+#   3. In Settings → Variables and secrets, add:
+#        - GOOGLE_API_KEY  (secret)
+#        - PORT = 7860     (variable; HF Spaces standard port)
+#        - APP_ENV = production
+#        - ADK_MODEL = gemini-flash-latest
+#   4. The Space rebuilds automatically; first boot auto-ingests the docs.
+#
+# No actual config schema — Spaces reads README.md frontmatter for SDK
+# settings. This file is here as a pointer to the docs.
+#
+# Add the following frontmatter at the top of README.md when deploying
+# to HF Spaces (we keep it out of the canonical README so the GitHub
+# rendering stays clean):
+#
+# ---
+# title: Helix SROP
+# emoji: 🛰️
+# colorFrom: blue
+# colorTo: indigo
+# sdk: docker
+# app_port: 7860
+# pinned: false
+# ---

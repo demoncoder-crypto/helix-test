@@ -1,0 +1,481 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>Helix Support Concierge — SROP</title>
+    <meta name="description" content="Helix AI Support Concierge — Stateful Routed Observable Pipeline." />
+    <link rel="icon" href="data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='80' font-size='80'>🛰️</text></svg>" />
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+      :root { color-scheme: dark; }
+      html, body { height: 100%; }
+      body {
+        background: radial-gradient(at 25% 0%, #1f2937 0%, #0b1020 50%, #050816 100%);
+        font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+      }
+      pre.scroll, .scroll {
+        scrollbar-width: thin;
+        scrollbar-color: #475569 transparent;
+      }
+      pre.scroll::-webkit-scrollbar, .scroll::-webkit-scrollbar { width: 8px; height: 8px; }
+      pre.scroll::-webkit-scrollbar-thumb, .scroll::-webkit-scrollbar-thumb {
+        background: #334155; border-radius: 4px;
+      }
+      .pulse-dot {
+        animation: pulse 1.6s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+      }
+      @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.5} }
+      .typing-dot { animation: bounce 1s infinite; display:inline-block; }
+      .typing-dot:nth-child(2) { animation-delay: .15s; }
+      .typing-dot:nth-child(3) { animation-delay: .3s; }
+      @keyframes bounce {
+        0%, 80%, 100% { transform: translateY(0); opacity:.4 }
+        40% { transform: translateY(-4px); opacity:1 }
+      }
+      details > summary { list-style: none; cursor: pointer; }
+      details > summary::-webkit-details-marker { display: none; }
+      .badge { padding: 2px 8px; border-radius: 9999px; font-size: 11px; font-weight: 600; letter-spacing: .03em; text-transform: uppercase; }
+      .badge-knowledge { background:#0c4a6e; color:#7dd3fc; }
+      .badge-account   { background:#3b0764; color:#c4b5fd; }
+      .badge-refusal   { background:#7c2d12; color:#fdba74; }
+      .badge-smalltalk { background:#374151; color:#d1d5db; }
+      .badge-error     { background:#7f1d1d; color:#fca5a5; }
+      .chip {
+        background:#0f172a; border:1px solid #334155;
+        color:#cbd5e1; padding:4px 10px; border-radius:999px;
+        font-size:12px; cursor:pointer; transition:all .15s;
+      }
+      .chip:hover { border-color:#0ea5e9; color:#7dd3fc; }
+    </style>
+  </head>
+  <body class="text-slate-100">
+    <div class="min-h-screen flex flex-col">
+
+      <!-- ─────────────────────────── header ─────────────────────────── -->
+      <header class="border-b border-slate-800/70 bg-slate-950/40 backdrop-blur sticky top-0 z-20">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 py-3 flex items-center justify-between gap-4">
+          <div class="flex items-center gap-3">
+            <div class="w-9 h-9 rounded-xl bg-gradient-to-br from-sky-400 to-indigo-500 flex items-center justify-center text-lg shadow-lg shadow-sky-500/20">🛰️</div>
+            <div>
+              <div class="font-semibold text-base tracking-tight">Helix Support Concierge</div>
+              <div class="text-xs text-slate-400">Stateful · Routed · Observable Pipeline</div>
+            </div>
+          </div>
+          <div class="flex items-center gap-3">
+            <div id="health" class="flex items-center gap-2 text-xs text-slate-400">
+              <span class="w-2 h-2 rounded-full bg-slate-500 pulse-dot" id="health-dot"></span>
+              <span id="health-text">connecting…</span>
+            </div>
+            <a href="https://github.com/demoncoder-crypto/helix-test" target="_blank" rel="noreferrer"
+               class="text-xs text-slate-300 hover:text-white border border-slate-700 hover:border-slate-500 rounded-md px-3 py-1.5 transition">
+              GitHub ↗
+            </a>
+          </div>
+        </div>
+      </header>
+
+      <!-- ─────────────────────────── main grid ─────────────────────────── -->
+      <main class="flex-1 max-w-7xl mx-auto w-full px-4 sm:px-6 py-6 grid grid-cols-1 lg:grid-cols-[280px_minmax(0,1fr)_360px] gap-6">
+
+        <!-- ────── left sidebar: session ────── -->
+        <aside class="space-y-4">
+          <section class="rounded-2xl border border-slate-800 bg-slate-900/60 p-4">
+            <h2 class="text-sm font-semibold text-slate-200 mb-3 flex items-center justify-between">
+              Session
+              <button id="reset-session" class="text-xs text-sky-400 hover:text-sky-300">reset</button>
+            </h2>
+            <label class="block text-xs text-slate-400 mb-1">User ID</label>
+            <input id="user-id" value="u_demo"
+              class="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-sky-500/40 focus:border-sky-500/40" />
+
+            <label class="block text-xs text-slate-400 mt-3 mb-1">Plan Tier</label>
+            <select id="plan-tier"
+              class="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-sky-500/40 focus:border-sky-500/40">
+              <option>free</option>
+              <option selected>pro</option>
+              <option>enterprise</option>
+            </select>
+
+            <button id="start-session"
+              class="mt-4 w-full bg-gradient-to-br from-sky-500 to-indigo-600 hover:from-sky-400 hover:to-indigo-500 text-white text-sm font-medium rounded-lg py-2 transition shadow-lg shadow-sky-500/20">
+              Start session
+            </button>
+
+            <div id="session-info" class="hidden mt-4 pt-4 border-t border-slate-800 space-y-1.5 text-xs">
+              <div class="flex justify-between">
+                <span class="text-slate-400">session</span>
+                <span id="info-session-id" class="font-mono text-slate-200 truncate ml-2 max-w-[140px]" title=""></span>
+              </div>
+              <div class="flex justify-between">
+                <span class="text-slate-400">turns</span>
+                <span id="info-turns" class="font-mono text-slate-200">0</span>
+              </div>
+              <div class="flex justify-between">
+                <span class="text-slate-400">last route</span>
+                <span id="info-last-route">—</span>
+              </div>
+            </div>
+          </section>
+
+          <section class="rounded-2xl border border-slate-800 bg-slate-900/60 p-4">
+            <h2 class="text-sm font-semibold text-slate-200 mb-3">Try a query</h2>
+            <div class="flex flex-wrap gap-2">
+              <button class="chip" data-q="How do I rotate a deploy key?">rotate deploy key</button>
+              <button class="chip" data-q="How do I upgrade to the Pro plan?">upgrade plan</button>
+              <button class="chip" data-q="How do I create a webhook?">create webhook</button>
+              <button class="chip" data-q="Show me my last 3 builds">last 3 builds</button>
+              <button class="chip" data-q="What plan am I on?">what plan?</button>
+              <button class="chip" data-q="Write me a poem about CI">poem about CI</button>
+            </div>
+          </section>
+
+          <section class="rounded-2xl border border-slate-800 bg-slate-900/60 p-4">
+            <h2 class="text-sm font-semibold text-slate-200 mb-3">Options</h2>
+            <label class="flex items-center gap-2 text-xs text-slate-300">
+              <input id="opt-idempotency" type="checkbox" class="accent-sky-500" />
+              <span>Send <code class="text-sky-300">Idempotency-Key</code> header</span>
+            </label>
+            <p class="text-[11px] text-slate-500 mt-1.5 leading-relaxed">
+              Sending the same key twice replays the cached reply — proves
+              the pipeline runs exactly once per key.
+            </p>
+          </section>
+        </aside>
+
+        <!-- ────── center: chat ────── -->
+        <section class="rounded-2xl border border-slate-800 bg-slate-900/60 flex flex-col min-h-[70vh]">
+          <div id="chat-thread" class="flex-1 overflow-y-auto scroll p-5 space-y-4">
+            <div class="text-center text-xs text-slate-500 py-12">
+              <div class="text-2xl mb-2">🛰️</div>
+              Start a session on the left, then ask anything about Helix —
+              docs questions go to the Knowledge agent (with citations),<br />
+              account questions go to the Account agent (with mock builds).
+            </div>
+          </div>
+          <div class="border-t border-slate-800 p-4 bg-slate-950/40">
+            <form id="chat-form" class="flex items-center gap-2">
+              <input id="chat-input" autocomplete="off" placeholder="Ask the concierge…" disabled
+                class="flex-1 bg-slate-950 border border-slate-700 rounded-lg px-4 py-2.5 text-sm placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-sky-500/40 focus:border-sky-500/40 disabled:opacity-50" />
+              <button id="chat-send" disabled
+                class="bg-sky-500 hover:bg-sky-400 disabled:bg-slate-700 disabled:cursor-not-allowed text-white text-sm font-medium rounded-lg px-5 py-2.5 transition">
+                Send
+              </button>
+            </form>
+            <div class="text-[11px] text-slate-500 mt-2 flex items-center gap-3">
+              <span>Press <kbd class="px-1.5 py-0.5 border border-slate-700 rounded text-[10px] bg-slate-900">Enter</kbd> to send</span>
+            </div>
+          </div>
+        </section>
+
+        <!-- ────── right: last trace ────── -->
+        <aside class="space-y-4">
+          <section class="rounded-2xl border border-slate-800 bg-slate-900/60 p-4">
+            <h2 class="text-sm font-semibold text-slate-200 mb-3 flex items-center justify-between">
+              Last trace
+              <span id="trace-badge"></span>
+            </h2>
+            <div id="trace-empty" class="text-xs text-slate-500">
+              The trace inspector will populate after your first turn — it
+              shows <code>routed_to</code>, the tool-call chain, every
+              retrieved <code>chunk_id</code>, and the per-turn latency.
+            </div>
+            <div id="trace-body" class="hidden space-y-3 text-xs">
+              <div class="grid grid-cols-2 gap-2">
+                <div class="bg-slate-950 rounded-lg p-2 border border-slate-800">
+                  <div class="text-[10px] uppercase text-slate-500 tracking-wide">latency</div>
+                  <div id="trace-latency" class="font-mono text-slate-100 mt-0.5">—</div>
+                </div>
+                <div class="bg-slate-950 rounded-lg p-2 border border-slate-800">
+                  <div class="text-[10px] uppercase text-slate-500 tracking-wide">tool calls</div>
+                  <div id="trace-tools" class="font-mono text-slate-100 mt-0.5">—</div>
+                </div>
+              </div>
+              <div>
+                <div class="text-[10px] uppercase text-slate-500 tracking-wide mb-1.5">trace_id</div>
+                <div id="trace-id" class="font-mono text-[11px] text-slate-300 break-all"></div>
+              </div>
+              <div id="trace-chunks-wrap" class="hidden">
+                <div class="text-[10px] uppercase text-slate-500 tracking-wide mb-1.5">retrieved chunks</div>
+                <div id="trace-chunks" class="space-y-1"></div>
+              </div>
+              <details class="bg-slate-950 rounded-lg border border-slate-800">
+                <summary class="px-3 py-2 text-[11px] font-medium text-slate-300 hover:text-white">
+                  Raw trace JSON ▾
+                </summary>
+                <pre id="trace-json" class="px-3 pb-3 text-[10px] text-slate-400 overflow-x-auto scroll leading-relaxed"></pre>
+              </details>
+            </div>
+          </section>
+
+          <section class="rounded-2xl border border-slate-800 bg-slate-900/60 p-4 text-[11px] leading-relaxed text-slate-400">
+            <div class="font-semibold text-slate-200 text-xs mb-2">What this proves</div>
+            <ul class="space-y-1 list-disc list-inside marker:text-slate-600">
+              <li>One chat endpoint, two specialist agents, deterministic routing</li>
+              <li>RAG over Helix docs with grounded chunk-id citations</li>
+              <li>Per-turn structured trace fetchable by id</li>
+              <li>Session state survives <code>uvicorn</code> restarts (SQLite-backed)</li>
+              <li>Out-of-scope guardrail short-circuits before the LLM</li>
+              <li>Typed RFC 7807 errors (504, 429, 404) on every failure</li>
+            </ul>
+          </section>
+        </aside>
+      </main>
+
+      <footer class="text-center text-[11px] text-slate-500 py-6 border-t border-slate-800/60">
+        <span class="font-mono">helix-srop</span> · FastAPI + Google ADK + ChromaDB · 
+        <a class="hover:text-slate-300" href="https://github.com/demoncoder-crypto/helix-test" target="_blank" rel="noreferrer">source on GitHub</a>
+      </footer>
+    </div>
+
+    <!-- ─────────────────────────── app logic ─────────────────────────── -->
+    <script>
+    (() => {
+      const API = window.location.origin;
+      let session = null;
+
+      const $  = (id) => document.getElementById(id);
+      const el = (tag, attrs = {}, ...kids) => {
+        const n = document.createElement(tag);
+        for (const [k, v] of Object.entries(attrs)) {
+          if (k === "class") n.className = v;
+          else if (k.startsWith("on") && typeof v === "function") n.addEventListener(k.slice(2), v);
+          else n.setAttribute(k, v);
+        }
+        for (const kid of kids) n.appendChild(typeof kid === "string" ? document.createTextNode(kid) : kid);
+        return n;
+      };
+      const fmtTime = (ms) => ms < 1000 ? `${ms} ms` : `${(ms / 1000).toFixed(1)} s`;
+
+      // ───── health ping ─────
+      async function ping() {
+        try {
+          const r = await fetch(`${API}/healthz`);
+          if (r.ok) {
+            $("health-dot").className = "w-2 h-2 rounded-full bg-emerald-400 pulse-dot";
+            $("health-text").textContent = "online";
+          } else throw new Error();
+        } catch {
+          $("health-dot").className = "w-2 h-2 rounded-full bg-rose-500 pulse-dot";
+          $("health-text").textContent = "offline";
+        }
+      }
+      ping();
+      setInterval(ping, 15000);
+
+      // ───── session ─────
+      async function startSession() {
+        const userId = $("user-id").value.trim() || "u_demo";
+        const plan = $("plan-tier").value;
+        $("start-session").disabled = true;
+        $("start-session").textContent = "starting…";
+        try {
+          const r = await fetch(`${API}/v1/sessions`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ user_id: userId, plan_tier: plan }),
+          });
+          if (!r.ok) throw new Error(`${r.status}`);
+          const j = await r.json();
+          session = { id: j.session_id, userId, plan, turns: 0 };
+          $("session-info").classList.remove("hidden");
+          $("info-session-id").textContent = j.session_id.slice(0, 8) + "…";
+          $("info-session-id").title = j.session_id;
+          $("info-turns").textContent = "0";
+          $("info-last-route").innerHTML = "—";
+          $("chat-input").disabled = false;
+          $("chat-send").disabled = false;
+          $("chat-input").focus();
+          $("chat-thread").innerHTML = "";
+          appendSystem(`Session ready · user ${userId} · plan ${plan}`);
+        } catch (e) {
+          alert("Failed to create session: " + e.message);
+        } finally {
+          $("start-session").disabled = false;
+          $("start-session").textContent = "Start session";
+        }
+      }
+
+      function resetSession() {
+        session = null;
+        $("session-info").classList.add("hidden");
+        $("chat-input").disabled = true;
+        $("chat-send").disabled = true;
+        $("chat-thread").innerHTML = `
+          <div class="text-center text-xs text-slate-500 py-12">
+            <div class="text-2xl mb-2">🛰️</div>
+            Session reset. Start a new one to chat again.
+          </div>`;
+        $("trace-empty").classList.remove("hidden");
+        $("trace-body").classList.add("hidden");
+        $("trace-badge").innerHTML = "";
+      }
+
+      // ───── chat thread rendering ─────
+      function appendSystem(text) {
+        $("chat-thread").appendChild(el("div", { class: "text-center text-[11px] text-slate-500 italic py-1" }, text));
+      }
+
+      function appendUser(text) {
+        const wrap = el("div", { class: "flex justify-end" });
+        wrap.appendChild(el("div", {
+          class: "max-w-[80%] rounded-2xl rounded-br-md bg-sky-600/90 text-white px-4 py-2.5 text-sm whitespace-pre-wrap"
+        }, text));
+        $("chat-thread").appendChild(wrap);
+        scrollToBottom();
+      }
+
+      function appendTyping() {
+        const node = el("div", { class: "flex", id: "typing" });
+        const bubble = el("div", { class: "rounded-2xl rounded-bl-md bg-slate-800 text-slate-400 px-4 py-3 text-sm" });
+        bubble.innerHTML = `<span class="typing-dot">●</span> <span class="typing-dot">●</span> <span class="typing-dot">●</span>`;
+        node.appendChild(bubble);
+        $("chat-thread").appendChild(node);
+        scrollToBottom();
+      }
+      function removeTyping() { const t = $("typing"); if (t) t.remove(); }
+
+      function appendAssistant({ reply, routed_to, trace_id, latency_ms, error }) {
+        const wrap = el("div", { class: "flex flex-col items-start gap-1.5" });
+        const meta = el("div", { class: "flex items-center gap-2 text-[11px] text-slate-500 ml-1" });
+        const klass = `badge badge-${error ? "error" : (routed_to || "smalltalk")}`;
+        meta.appendChild(el("span", { class: klass }, error ? "error" : (routed_to || "—")));
+        if (typeof latency_ms === "number") {
+          meta.appendChild(el("span", { class: "text-slate-500" }, `· ${fmtTime(latency_ms)}`));
+        }
+        if (trace_id) {
+          const link = el("button", {
+            class: "text-sky-400 hover:text-sky-300",
+            onclick: () => loadTrace(trace_id),
+          }, "inspect trace ↗");
+          meta.appendChild(el("span", { class: "text-slate-600" }, "·"));
+          meta.appendChild(link);
+        }
+        wrap.appendChild(meta);
+
+        const bubble = el("div", {
+          class: "max-w-[80%] rounded-2xl rounded-bl-md bg-slate-800 text-slate-100 px-4 py-2.5 text-sm whitespace-pre-wrap leading-relaxed " +
+                 (error ? "border border-rose-700/50 bg-rose-900/20 text-rose-100" : "")
+        }, reply);
+        wrap.appendChild(bubble);
+        $("chat-thread").appendChild(wrap);
+        scrollToBottom();
+      }
+
+      function scrollToBottom() {
+        const t = $("chat-thread");
+        t.scrollTop = t.scrollHeight;
+      }
+
+      // ───── send a turn ─────
+      async function sendTurn(text) {
+        if (!session || !text.trim()) return;
+        appendUser(text);
+        const t0 = performance.now();
+        appendTyping();
+
+        const headers = { "Content-Type": "application/json" };
+        if ($("opt-idempotency").checked) {
+          // Stable per-message key so a fast double-click replays the cache.
+          const key = `ui-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+          headers["Idempotency-Key"] = key;
+          appendSystem(`Idempotency-Key: ${key}`);
+        }
+
+        try {
+          const r = await fetch(`${API}/v1/chat/${session.id}`, {
+            method: "POST",
+            headers,
+            body: JSON.stringify({ content: text }),
+          });
+          const latency_ms = Math.round(performance.now() - t0);
+          removeTyping();
+
+          if (!r.ok) {
+            let detail;
+            try { detail = await r.json(); } catch { detail = { detail: await r.text() }; }
+            appendAssistant({
+              reply: `[${detail.title || r.status}] ${detail.detail || "request failed"}`,
+              routed_to: null,
+              trace_id: null,
+              latency_ms,
+              error: true,
+            });
+            return;
+          }
+
+          const j = await r.json();
+          appendAssistant({
+            reply: j.reply,
+            routed_to: j.routed_to,
+            trace_id: j.trace_id,
+            latency_ms,
+          });
+          session.turns++;
+          $("info-turns").textContent = session.turns;
+          if (j.routed_to) {
+            $("info-last-route").innerHTML =
+              `<span class="badge badge-${j.routed_to}">${j.routed_to}</span>`;
+          }
+          if (j.trace_id) loadTrace(j.trace_id);
+        } catch (e) {
+          removeTyping();
+          appendAssistant({
+            reply: "Network error: " + e.message,
+            error: true,
+            latency_ms: Math.round(performance.now() - t0),
+          });
+        }
+      }
+
+      // ───── trace inspector ─────
+      async function loadTrace(traceId) {
+        try {
+          const r = await fetch(`${API}/v1/traces/${traceId}`);
+          if (!r.ok) return;
+          const t = await r.json();
+          $("trace-empty").classList.add("hidden");
+          $("trace-body").classList.remove("hidden");
+          $("trace-id").textContent = t.trace_id;
+          $("trace-latency").textContent = fmtTime(t.latency_ms || 0);
+          $("trace-tools").textContent = (t.tool_calls || []).length;
+          $("trace-badge").innerHTML = `<span class="badge badge-${t.routed_to}">${t.routed_to}</span>`;
+
+          const chunks = t.retrieved_chunk_ids || [];
+          if (chunks.length) {
+            $("trace-chunks-wrap").classList.remove("hidden");
+            const c = $("trace-chunks");
+            c.innerHTML = "";
+            for (const id of chunks) {
+              c.appendChild(el("div", { class: "font-mono text-[10px] text-slate-300 bg-slate-950 border border-slate-800 rounded px-2 py-1" }, id));
+            }
+          } else {
+            $("trace-chunks-wrap").classList.add("hidden");
+          }
+          $("trace-json").textContent = JSON.stringify(t, null, 2);
+        } catch {/* swallow */}
+      }
+
+      // ───── wire up DOM ─────
+      $("start-session").addEventListener("click", startSession);
+      $("reset-session").addEventListener("click", resetSession);
+      $("chat-form").addEventListener("submit", (e) => {
+        e.preventDefault();
+        const v = $("chat-input").value;
+        $("chat-input").value = "";
+        sendTurn(v);
+      });
+      document.querySelectorAll(".chip").forEach((b) => {
+        b.addEventListener("click", () => {
+          if (!session) {
+            alert("Start a session first (button on the left).");
+            return;
+          }
+          $("chat-input").value = b.dataset.q;
+          $("chat-input").focus();
+        });
+      });
+    })();
+    </script>
+  </body>
+</html>
