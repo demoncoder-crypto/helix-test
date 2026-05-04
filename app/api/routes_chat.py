@@ -15,7 +15,6 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.api_key import set_request_api_key
 from app.db.models import Message
 from app.db.session import get_db
 from app.srop import pipeline
@@ -63,24 +62,17 @@ async def chat(
     body: ChatRequest,
     db: AsyncSession = Depends(get_db),
     idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
-    google_api_key: str | None = Header(default=None, alias="X-Google-Api-Key"),
 ) -> ChatResponse:
     """Run one turn of the SROP pipeline.
 
     Headers:
     - ``Idempotency-Key`` (optional) — replay-safe key per (session, key).
-    - ``X-Google-Api-Key`` (optional) — BYOK. When present, this key is
-      used for embeddings + reranker + the ADK LLM call **for this
-      request only**. Falls back to the server's configured key if the
-      header is absent or empty.
 
     Error cases:
     - Session not found → 404 ``SESSION_NOT_FOUND``
     - LLM timeout → 504 ``UPSTREAM_TIMEOUT``
     - LLM rate-limited → 429 ``RATE_LIMITED``
     """
-    set_request_api_key(google_api_key)
-
     cached = await _lookup_idempotent_reply(session_id, idempotency_key, db)
     if cached is not None:
         return cached

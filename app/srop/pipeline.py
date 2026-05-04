@@ -33,7 +33,6 @@ from sqlalchemy.orm.attributes import flag_modified
 
 from app.agents.guardrails import is_out_of_scope, refusal_message
 from app.agents.orchestrator import build_root_agent
-from app.api.api_key import active_google_api_key, adk_env_lock, adk_env_override
 from app.api.errors import (
     HelixError,
     RateLimitedError,
@@ -311,11 +310,9 @@ async def _persist_turn(
 async def _run_adk_turn(state: SessionState, user_message: str, accum: _TurnTrace) -> None:
     """Run one turn through google-adk's InMemoryRunner.
 
-    BYOK contract: we hold ``adk_env_lock`` across the swap-in of the
-    per-request ``GOOGLE_API_KEY`` and the entire ADK call. ADK reads the
-    key from process env, so without the lock two concurrent requests
-    with different keys would race. Embeddings + reranker get the key
-    via context-var and don't need this lock.
+    ADK reads ``GOOGLE_API_KEY`` from the process environment, which is
+    set once at import time in ``app.settings`` from the ``.env`` file
+    (or from a hosting-platform secret). One server, one key — simple.
     """
     from google.adk.runners import InMemoryRunner
     from google.genai import types as genai_types
@@ -326,25 +323,22 @@ async def _run_adk_turn(state: SessionState, user_message: str, accum: _TurnTrac
         span.set_attribute("adk.user_id", state.user_id)
         span.set_attribute("adk.message_len", len(user_message))
 
-        active_key = active_google_api_key()
-        async with adk_env_lock:
-            with adk_env_override(active_key):
-                agent = build_root_agent(state)
-                runner = InMemoryRunner(agent=agent, app_name=_APP_NAME)
+        agent = build_root_agent(state)
+        runner = InMemoryRunner(agent=agent, app_name=_APP_NAME)
 
-                adk_session = await runner.session_service.create_session(
-                    app_name=_APP_NAME, user_id=state.user_id
-                )
-                new_message = genai_types.Content(
-                    role="user",
-                    parts=[genai_types.Part.from_text(text=user_message)],
-                )
-                stream = runner.run_async(
-                    user_id=state.user_id,
-                    session_id=adk_session.id,
-                    new_message=new_message,
-                )
-                await _consume_events(stream, accum)
+        adk_session = await runner.session_service.create_session(
+            app_name=_APP_NAME, user_id=state.user_id
+        )
+        new_message = genai_types.Content(
+            role="user",
+            parts=[genai_types.Part.from_text(text=user_message)],
+        )
+        stream = runner.run_async(
+            user_id=state.user_id,
+            session_id=adk_session.id,
+            new_message=new_message,
+        )
+        await _consume_events(stream, accum)
 
         span.set_attribute("adk.tool_calls", len(accum.tool_calls))
         span.set_attribute("adk.routed_to", accum.routed_to)

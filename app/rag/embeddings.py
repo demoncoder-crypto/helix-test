@@ -45,18 +45,13 @@ _TOKEN_RE = re.compile(r"[A-Za-z0-9_]+")
 
 
 def _backend() -> Literal["google", "local"]:
-    """Decide which backend to use based on the **server's** API key.
+    """Pick the embedding backend based on the configured API key.
 
-    IMPORTANT: embedding backend is a server-level decision, NOT
-    request-scoped. Both ingest and query must use the same backend
-    or vectors live in different mathematical spaces and cosine
-    similarity becomes meaningless. Per-request BYOK keys
-    (``X-Google-Api-Key``) are only used for the LLM call (ADK +
-    reranker), never for embeddings.
-
-    Falls back to ``local`` when no server-level key is configured so
-    tests, CI, offline dev, and zero-secret hosted demos all still
-    work — they just use a lower-quality but self-consistent embedding.
+    Both ingest and query must use the same backend — vectors from
+    different backends live in different mathematical spaces and
+    cosine similarity becomes meaningless. Falls back to a deterministic
+    local hash embedding when no key is configured so tests, CI, and
+    offline development still work.
     """
     if settings.google_api_key.strip():
         return "google"
