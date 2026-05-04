@@ -402,44 +402,6 @@ front-end this would be consumed by isn't part of the deliverable.
   the same instance.
 
 ---
-
-## What I'd do with more time
-
-1. **E2 escalation agent.** A third sub-agent that owns "talk to a
-   human" flows: opens a `support_ticket` row in the DB, picks a
-   priority, and emits a webhook event. The plumbing is already
-   here — would just be one more `LlmAgent` + tool + DB table.
-2. **E3 SSE streaming.** `text/event-stream` on `/v1/chat/{id}` so the
-   UI can render tokens as they arrive. ADK's runner already exposes
-   `run_async` as an async generator; the FastAPI side is one
-   `EventSourceResponse` away.
-3. **Cross-encoder reranker** as a second option alongside the
-   LLM-as-judge one. Local model (e.g. `bge-reranker-base`) avoids the
-   second LLM round-trip and gets ~80% of the lift; the dispatcher
-   pattern from the vector store would translate cleanly.
-4. **Reranker eval lift in CI.** Wire `eval/run_eval.py` into a
-   GitHub Action that runs both modes on every PR and posts the
-   recall@3 delta as a comment. Right now it's a manual
-   "stop-server, flip env, restart, rerun" loop.
-5. **Auth / multi-tenancy.** `SECRET_KEY` is wired but the JWT layer
-   from E2 of the spec isn't built; would also let
-   `get_recent_builds` / `get_account_status` actually scope by org.
-
----
-
-## Time spent
-
-| Phase                                              | Time |
-|----------------------------------------------------|------|
-| Project read-through, design decisions, planning   | 0:30 |
-| Setup, `.gitignore`, package layout, error handler | 0:15 |
-| Sessions endpoint                                  | 0:15 |
-| RAG: chunker, embeddings (dual backend), vector store, ingest, search_docs | 1:00 |
-| Account tools (mock, deterministic per user)       | 0:15 |
-| ADK agents (knowledge, account, root factory)      | 0:40 |
-| Pipeline (event walking, state persistence, traces)| 0:50 |
-| Trace endpoint                                     | 0:10 |
-| Tests (15 across `test_api`, `test_retriever`, `test_guardrails`) | 0:35 |
 | Extensions: E1 idempotency, E5 guardrails, E6 Docker | 0:45 |
 | Extensions: E4 reranker, E7 eval harness, OTel, pgvector | 1:30 |
 | README + manual demo verification                  | 0:30 |
