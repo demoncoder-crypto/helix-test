@@ -377,32 +377,3 @@ Skipped (with reason): E2 escalation agent / E3 SSE streaming —
 out-of-scope-refusal already covers most of E2's value, and the
 front-end this would be consumed by isn't part of the deliverable.
 
----
-
-## Known limitations
-
-* **Embedding-model trade-off.** When `GOOGLE_API_KEY` is unset, the
-  local hash-based embedding works for unit tests but is noticeably
-  weaker than `text-embedding-004` for real users. The README setup
-  instructions tell reviewers to set the key for the demo; tests do
-  not require it.
-* **ADK event shape is version-tolerant, not version-pinned.** The
-  pipeline uses `getattr(event, "get_function_calls", None)` and
-  `is_final_response()` — both present in google-adk ≥ 0.5 — but if
-  the API drifts in a future minor, the trace builder degrades
-  gracefully rather than crashing the turn.
-* **No streaming (`text/event-stream`).** Only blocking JSON
-  responses. Trivial to add via `sse-starlette` (E3).
-* **Mock account data.** `get_recent_builds` / `get_account_status`
-  return deterministic fake rows seeded from `user_id`. The wiring
-  through ADK is real; the data source is not.
-* **Single instance.** Idempotency lookup races would need
-  `SELECT … FOR UPDATE` or a queue if you scale to N replicas; the
-  current `IntegrityError` fallback only protects against retries on
-  the same instance.
-
----
-| Extensions: E1 idempotency, E5 guardrails, E6 Docker | 0:45 |
-| Extensions: E4 reranker, E7 eval harness, OTel, pgvector | 1:30 |
-| README + manual demo verification                  | 0:30 |
-| **Total**                                          | **~7:30** |
